@@ -1,8 +1,10 @@
 # app.py
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 import spacy
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)  # This will enable CORS for all domains and all routes
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -14,13 +16,16 @@ def hello():
 
 @app.route("/highlight", methods=["POST"])
 def highlight():
+    if request.method == "OPTIONS":  # CORS preflight
+        return _build_cors_preflight_response()
+
     data = request.json
     text = data.get("text", "")
 
     # Replace with your actual text processing logic
     highlighted_words = process_text(text)
 
-    return jsonify({"highlightedWords": highlighted_words})
+    return _corsify_actual_response(jsonify({"highlightedWords": highlighted_words}))
 
 
 def process_text(text: str):
@@ -34,39 +39,97 @@ def is_unigram(text):
 
 
 def extract_and_merge(text: str):
-    doc = nlp(text)
+    doc = nlp(
+        text,
+    )
     merged_list = []
     noun_chunks = list(doc.noun_chunks)
     noun_chunks_dict = {chunk.start: chunk for chunk in noun_chunks}
 
+    print(noun_chunks_dict)
     i = 0
     while i < len(doc):
         token = doc[i]
-        if token.pos_ == "VERB":
-            verb_phrase = token.text
-            if i + 1 < len(doc):
-                next_token = doc[i + 1]
-                # Check if the next token is a preposition or particle or noun chunk starts right after the verb
-                if next_token.pos_ in {"ADP", "PART"} or (i + 1 in noun_chunks_dict):
-                    if next_token.pos_ in {"ADP", "PART"} and (
-                        i + 2 in noun_chunks_dict
+
+        if i in noun_chunks_dict:
+            if not (is_unigram(noun_chunks_dict[i].text) and doc[i].pos_ != "NOUN"):
+                chunk_text = noun_chunks_dict[i].text
+                next_token_idx = i + len(noun_chunks_dict[i])
+                while next_token_idx < len(doc):
+                    if (
+                        doc[next_token_idx].pos_
+                        in {
+                            # "ADP",
+                            "PART",
+                        }
+                        and next_token_idx + 1 in noun_chunks_dict
                     ):
-                        # If there's an ADP or PART followed by a noun chunk, merge them
-                        verb_phrase += (
-                            " " + next_token.text + " " + noun_chunks_dict[i + 2].text
+                        chunk_text += " " + " ".join(
+                            [
+                                doc[next_token_idx].text,
+                                noun_chunks_dict[next_token_idx + 1].text,
+                            ]
                         )
-                        i += 2  # Skip the ADP/PART and noun chunk
+                        # i += 1 + len(noun_chunks_dict[next_token_idx + 1])
+
+                        next_token_idx += 1 + len(noun_chunks_dict[next_token_idx + 1])
+                        i = next_token_idx - 1
+                    else:
+                        break
+                merged_list.append(chunk_text)
+        elif token.pos_ in {
+            "VERB",
+            "AUX",
+            # "ADV",
+            "ADJ",
+        }:
+            verb_phrase = token.text
+            if token.lemma_ != "be":
+                while i + 1 < len(doc) - 1:
+                    # Check if the next token is a preposition or particle or noun chunk starts right after the verb
+                    if doc[i + 1].pos_ in {"PART"}:
+                        if i + 2 in noun_chunks_dict:
+                            verb_phrase += " " + " ".join(
+                                [doc[i + 1].text, noun_chunks_dict[i + 2].text]
+                            )
+                            i += 1 + len(noun_chunks_dict[i + 2])
+                        elif i + 2 < len(doc) and doc[i + 2].pos_ == "VERB":
+                            verb_phrase += " " + " ".join(
+                                [doc[i + 1].text, doc[i + 2].text]
+                            )
+                            i += 2
+                        else:
+                            i += 1
+                    elif doc[i + 1].pos_ in {"ADJ"}:
+                        verb_phrase += " " + doc[i + 1].text
+                        i += 1
                     elif i + 1 in noun_chunks_dict:
-                        # If there's a noun chunk right after the verb, merge them
                         verb_phrase += " " + noun_chunks_dict[i + 1].text
-                        i += 1  # Skip the noun chunk
-            merged_list.append(verb_phrase)
-        if i in noun_chunks_dict and token.pos_ != "VERB":
-            merged_list.append(noun_chunks_dict[i].text)
+                        i += len(noun_chunks_dict[i + 1])
+                    else:
+                        break
+                if not is_unigram(verb_phrase):
+                    merged_list.append(verb_phrase)
+
         i += 1
 
-    return [i for i in merged_list if not is_unigram(i)]
+    output = [i for i in merged_list]
+    print(output)
+    return output
+
+
+def _build_cors_preflight_response():
+    response = make_response()
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "*")
+    response.headers.add("Access-Control-Allow-Methods", "*")
+    return response
+
+
+def _corsify_actual_response(response):
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    return response
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, ssl_context=("localhost.pem", "localhost-key.pem"))
