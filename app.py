@@ -1,10 +1,11 @@
 # app.py
 from flask import Flask, request, jsonify, make_response
 import spacy
-from flask_cors import CORS
+
+# from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)  # This will enable CORS for all domains and all routes
+# CORS(app)  # This will enable CORS for all domains and all routes
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -16,8 +17,8 @@ def hello():
 
 @app.route("/highlight", methods=["POST"])
 def highlight():
-    if request.method == "OPTIONS":  # CORS preflight
-        return _build_cors_preflight_response()
+    # if request.method == "OPTIONS":  # CORS preflight
+    #     return _build_cors_preflight_response()
 
     data = request.json
     text = data.get("text", "")
@@ -25,7 +26,7 @@ def highlight():
     # Replace with your actual text processing logic
     highlighted_words = process_text(text)
 
-    return _corsify_actual_response(jsonify({"highlightedWords": highlighted_words}))
+    return jsonify({"highlightedWords": highlighted_words})
 
 
 def process_text(text: str):
@@ -36,6 +37,26 @@ def process_text(text: str):
 
 def is_unigram(text):
     return len(text.split()) == 1
+
+
+def is_passive_verb(token):
+    # Check if the token is a verb
+    if token.pos_ != "VERB":
+        return False
+
+    # Passive voice in English often involves:
+    # - A verb with a passive voice dependency tag
+    # - The token having an auxiliary verb (like "be") and a past participle
+    if token.dep_ in {"nsubjpass", "agent"}:
+        return True
+
+    # Additional checks for complex passive structures
+    # Look for auxiliary verbs or particles indicating passive construction
+    if token.dep_ == "auxpass" or token.dep_ == "xcomp":
+        return True
+    if token.tag_=="VBN":
+        return True
+    return False
 
 
 def extract_and_merge(text: str):
@@ -108,7 +129,7 @@ def extract_and_merge(text: str):
                         i += len(noun_chunks_dict[i + 1])
                     else:
                         break
-                if not is_unigram(verb_phrase):
+                if not is_unigram(verb_phrase) or is_passive_verb(token):
                     merged_list.append(verb_phrase)
 
         i += 1
@@ -118,17 +139,17 @@ def extract_and_merge(text: str):
     return output
 
 
-def _build_cors_preflight_response():
-    response = make_response()
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    response.headers.add("Access-Control-Allow-Headers", "*")
-    response.headers.add("Access-Control-Allow-Methods", "*")
-    return response
+# def _build_cors_preflight_response():
+#     response = make_response()
+#     response.headers.add("Access-Control-Allow-Origin", "*")
+#     response.headers.add("Access-Control-Allow-Headers", "*")
+#     response.headers.add("Access-Control-Allow-Methods", "*")
+#     return response
 
 
-def _corsify_actual_response(response):
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    return response
+# def _corsify_actual_response(response):
+#     response.headers.add("Access-Control-Allow-Origin", "*")
+#     return response
 
 
 if __name__ == "__main__":
