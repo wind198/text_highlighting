@@ -54,7 +54,7 @@ def is_passive_verb(token):
     # Look for auxiliary verbs or particles indicating passive construction
     if token.dep_ == "auxpass" or token.dep_ == "xcomp":
         return True
-    if token.tag_=="VBN":
+    if token.tag_ == "VBN":
         return True
     return False
 
@@ -64,14 +64,19 @@ def extract_and_merge(text: str):
         text,
     )
     merged_list = []
-    noun_chunks = list(doc.noun_chunks)
+    noun_chunks = [
+        i
+        for i in doc.noun_chunks
+        if not (is_unigram(i.text) and doc[i.start].pos_ == "PRON")
+    ]
     noun_chunks_dict = {chunk.start: chunk for chunk in noun_chunks}
+
+    doc_arr = [i for i in doc]
 
     print(noun_chunks_dict)
     i = 0
     while i < len(doc):
         token = doc[i]
-
         if i in noun_chunks_dict:
             if not (is_unigram(noun_chunks_dict[i].text) and doc[i].pos_ != "NOUN"):
                 chunk_text = noun_chunks_dict[i].text
@@ -80,7 +85,7 @@ def extract_and_merge(text: str):
                     if (
                         doc[next_token_idx].pos_
                         in {
-                            # "ADP",
+                            "ADP",
                             "PART",
                         }
                         and next_token_idx + 1 in noun_chunks_dict
@@ -108,7 +113,10 @@ def extract_and_merge(text: str):
             if token.lemma_ != "be":
                 while i + 1 < len(doc) - 1:
                     # Check if the next token is a preposition or particle or noun chunk starts right after the verb
-                    if doc[i + 1].pos_ in {"PART"}:
+                    if i + 1 in noun_chunks_dict:
+                        verb_phrase += " " + noun_chunks_dict[i + 1].text
+                        i += len(noun_chunks_dict[i + 1])
+                    elif doc[i + 1].pos_ in {"PART"}:
                         if i + 2 in noun_chunks_dict:
                             verb_phrase += " " + " ".join(
                                 [doc[i + 1].text, noun_chunks_dict[i + 2].text]
@@ -124,12 +132,13 @@ def extract_and_merge(text: str):
                     elif doc[i + 1].pos_ in {"ADJ"}:
                         verb_phrase += " " + doc[i + 1].text
                         i += 1
-                    elif i + 1 in noun_chunks_dict:
-                        verb_phrase += " " + noun_chunks_dict[i + 1].text
-                        i += len(noun_chunks_dict[i + 1])
                     else:
                         break
-                if not is_unigram(verb_phrase) or is_passive_verb(token):
+                if (
+                    not is_unigram(verb_phrase)
+                    or is_passive_verb(token)
+                    or token.pos_ == "ADJ"
+                ):
                     merged_list.append(verb_phrase)
 
         i += 1
@@ -153,4 +162,4 @@ def extract_and_merge(text: str):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000, ssl_context=("localhost.pem", "localhost-key.pem"))
+    app.run(debug=True, port=5000, ssl_context=("./localhost.pem", "./localhost-key.pem"))
