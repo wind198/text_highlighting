@@ -81,6 +81,8 @@ def extract_and_merge(text: str):
             if not (is_unigram(noun_chunks_dict[i].text) and doc[i].pos_ != "NOUN"):
                 chunk_text = noun_chunks_dict[i].text
                 next_token_idx = i + len(noun_chunks_dict[i])
+                i = next_token_idx
+
                 while next_token_idx < len(doc):
                     if (
                         doc[next_token_idx].pos_
@@ -106,12 +108,13 @@ def extract_and_merge(text: str):
         elif token.pos_ in {
             "VERB",
             "AUX",
-            # "ADV",
+            "ADV",
             "ADJ",
+            "PART",
         }:
             verb_phrase = token.text
-            if token.lemma_ != "be":
-                while i + 1 < len(doc) - 1:
+            if token.lemma_ != "be" or token.dep_ == "neg":
+                while i + 1 <= len(doc) - 1:
                     # Check if the next token is a preposition or particle or noun chunk starts right after the verb
                     if i + 1 in noun_chunks_dict:
                         verb_phrase += " " + noun_chunks_dict[i + 1].text
@@ -129,7 +132,7 @@ def extract_and_merge(text: str):
                             i += 2
                         else:
                             i += 1
-                    elif doc[i + 1].pos_ in {"ADJ"}:
+                    elif doc[i + 1].pos_ in {"ADJ", "VERB"}:
                         verb_phrase += " " + doc[i + 1].text
                         i += 1
                     else:
@@ -162,4 +165,6 @@ def extract_and_merge(text: str):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000, ssl_context=("./localhost.pem", "./localhost-key.pem"))
+    app.run(
+        debug=True, port=5000, ssl_context=("./localhost.pem", "./localhost-key.pem")
+    )
