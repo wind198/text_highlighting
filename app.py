@@ -1,12 +1,12 @@
 # app.py
-from flask import Flask, request, jsonify, make_response
+from dotenv import load_dotenv
+from flask import Flask, request, jsonify
 import spacy
+import os
 
-# from flask_cors import CORS
+load_dotenv()
 
 app = Flask(__name__)
-# CORS(app)  # This will enable CORS for all domains and all routes
-
 nlp = spacy.load("en_core_web_sm")
 
 
@@ -17,9 +17,6 @@ def hello():
 
 @app.route("/highlight", methods=["POST"])
 def highlight():
-    # if request.method == "OPTIONS":  # CORS preflight
-    #     return _build_cors_preflight_response()
-
     data = request.json
     text = data.get("text", "")
 
@@ -60,9 +57,7 @@ def is_passive_verb(token):
 
 
 def extract_and_merge(text: str):
-    doc = nlp(
-        text,
-    )
+    doc = nlp(text)
     merged_list = []
     noun_chunks = [
         i
@@ -81,15 +76,10 @@ def extract_and_merge(text: str):
             if not (is_unigram(noun_chunks_dict[i].text) and doc[i].pos_ != "NOUN"):
                 chunk_text = noun_chunks_dict[i].text
                 next_token_idx = i + len(noun_chunks_dict[i])
-                i = next_token_idx
-
-                while next_token_idx < len(doc):
+                connect_count = 0
+                while next_token_idx < len(doc) and connect_count < 2:
                     if (
-                        doc[next_token_idx].pos_
-                        in {
-                            "ADP",
-                            "PART",
-                        }
+                        doc[next_token_idx].pos_ in {"ADP", "CCONJ"}
                         and next_token_idx + 1 in noun_chunks_dict
                     ):
                         chunk_text += " " + " ".join(
@@ -98,51 +88,51 @@ def extract_and_merge(text: str):
                                 noun_chunks_dict[next_token_idx + 1].text,
                             ]
                         )
-                        # i += 1 + len(noun_chunks_dict[next_token_idx + 1])
-
                         next_token_idx += 1 + len(noun_chunks_dict[next_token_idx + 1])
                         i = next_token_idx - 1
+                        connect_count += 1
                     else:
                         break
-                merged_list.append(chunk_text)
-        elif token.pos_ in {
-            "VERB",
-            "AUX",
-            "ADV",
-            "ADJ",
-            "PART",
-        }:
+                if not is_unigram(chunk_text):
+                    merged_list.append(chunk_text)
+        elif token.pos_ in {"VERB", "ADJ"}:
             verb_phrase = token.text
-            if token.lemma_ != "be" or token.dep_ == "neg":
-                while i + 1 <= len(doc) - 1:
-                    # Check if the next token is a preposition or particle or noun chunk starts right after the verb
+            if token.lemma_ != "be":
+                connect_count = 0
+                while i + 1 < len(doc) - 1 and connect_count < 1:
                     if i + 1 in noun_chunks_dict:
                         verb_phrase += " " + noun_chunks_dict[i + 1].text
                         i += len(noun_chunks_dict[i + 1])
+                        connect_count += 1
                     elif doc[i + 1].pos_ in {"PART"}:
                         if i + 2 in noun_chunks_dict:
                             verb_phrase += " " + " ".join(
                                 [doc[i + 1].text, noun_chunks_dict[i + 2].text]
                             )
                             i += 1 + len(noun_chunks_dict[i + 2])
+                            connect_count += 1
+
                         elif i + 2 < len(doc) and doc[i + 2].pos_ == "VERB":
                             verb_phrase += " " + " ".join(
                                 [doc[i + 1].text, doc[i + 2].text]
                             )
                             i += 2
+                            connect_count += 1
+
                         else:
                             i += 1
                     elif doc[i + 1].pos_ in {"ADJ", "VERB"}:
                         verb_phrase += " " + doc[i + 1].text
                         i += 1
+                        connect_count += 1
                     else:
                         break
-                if (
-                    not is_unigram(verb_phrase)
-                    or is_passive_verb(token)
-                    or token.pos_ == "ADJ"
-                ):
-                    merged_list.append(verb_phrase)
+                    if (
+                        not is_unigram(verb_phrase)
+                        or is_passive_verb(token)
+                        or token.pos_ == "ADJ"
+                    ):
+                        merged_list.append(verb_phrase)
 
         i += 1
 
@@ -151,20 +141,10 @@ def extract_and_merge(text: str):
     return output
 
 
-# def _build_cors_preflight_response():
-#     response = make_response()
-#     response.headers.add("Access-Control-Allow-Origin", "*")
-#     response.headers.add("Access-Control-Allow-Headers", "*")
-#     response.headers.add("Access-Control-Allow-Methods", "*")
-#     return response
-
-
-# def _corsify_actual_response(response):
-#     response.headers.add("Access-Control-Allow-Origin", "*")
-#     return response
-
-
 if __name__ == "__main__":
-    app.run(
-        debug=True, port=5000, ssl_context=("./localhost.pem", "./localhost-key.pem")
+    env = os.getenv("FLASK_ENV", "production")
+    print("Running with env of ", env)
+    ssl_context = (
+        ("./localhost.pem", "./localhost-key.pem") if env == "development" else None
     )
+    app.run(debug=True, port=5000, ssl_context=ssl_context)
