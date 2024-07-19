@@ -6,6 +6,9 @@ import os
 
 load_dotenv()
 
+max_connect = 3
+max_chunk_len = 18 # approximately the max chunk length of each highlight
+
 app = Flask(__name__)
 nlp = spacy.load("en_core_web_sm")
 
@@ -75,66 +78,118 @@ def extract_and_merge(text: str):
         if i in noun_chunks_dict:
             if not (is_unigram(noun_chunks_dict[i].text) and doc[i].pos_ != "NOUN"):
                 chunk_text = noun_chunks_dict[i].text
-                next_token_idx = i + len(noun_chunks_dict[i])
+                i += len(noun_chunks_dict[i])
                 connect_count = 0
-                while next_token_idx < len(doc) and connect_count < 2:
-                    if (
-                        doc[next_token_idx].pos_ in {"ADP", "CCONJ"}
-                        and next_token_idx + 1 in noun_chunks_dict
-                    ):
-                        chunk_text += " " + " ".join(
-                            [
-                                doc[next_token_idx].text,
-                                noun_chunks_dict[next_token_idx + 1].text,
-                            ]
-                        )
-                        next_token_idx += 1 + len(noun_chunks_dict[next_token_idx + 1])
-                        i = next_token_idx - 1
+                while (
+                    i < len(doc)
+                    and connect_count < max_connect
+                    and len(chunk_text) < max_chunk_len
+                ):
+                    if doc[i].pos_ in {"ADP", "CCONJ"}:
+                        if i + 1 in noun_chunks_dict:
+                            chunk_text += " " + " ".join(
+                                [
+                                    doc[i].text,
+                                    noun_chunks_dict[i + 1].text,
+                                ]
+                            )
+                            i += 1 + len(noun_chunks_dict[i + 1])
+                            connect_count += 1
+                        elif doc[i + 1].pos_ in {"NOUN", "NUM"}:
+                            chunk_text += " " + " ".join(
+                                [
+                                    doc[i].text,
+                                    doc[i + 1].text,
+                                ]
+                            )
+                            i += 2
+                            connect_count += 1
+                        else:
+                            break
+                    elif doc[i].pos_ in {"SYM"}:
+                        if doc[i + 1].pos_ in {"NOUN", "NUM","ADJ","ADV"}:
+                            chunk_text += "" + "".join(
+                                [
+                                    doc[i].text,
+                                    doc[i + 1].text,
+                                ]
+                            )
+                            i += 2
+                            connect_count += 1
+                        else:
+                            break
+                    elif doc[i].pos_ in {"NOUN", "NUM","ADJ","ADV"}:
+                        chunk_text += " " + doc[i].text
+                        print(chunk_text)
+                        print(len(chunk_text))
+                        i += 1
                         connect_count += 1
+
                     else:
                         break
                 if not is_unigram(chunk_text):
                     merged_list.append(chunk_text)
+            else:
+                i += 1
         elif token.pos_ in {"VERB", "ADJ"}:
             verb_phrase = token.text
+            i += 1
             if token.lemma_ != "be":
                 connect_count = 0
-                while i + 1 < len(doc) - 1 and connect_count < 1:
-                    if i + 1 in noun_chunks_dict:
-                        verb_phrase += " " + noun_chunks_dict[i + 1].text
-                        i += len(noun_chunks_dict[i + 1])
+                while (
+                    i < len(doc) - 1
+                    and connect_count < max_connect
+                    and len(verb_phrase) < max_chunk_len
+                ):
+                    if i in noun_chunks_dict:
+                        verb_phrase += " " + noun_chunks_dict[i].text
+                        i += len(noun_chunks_dict[i])
                         connect_count += 1
-                    elif doc[i + 1].pos_ in {"PART"}:
-                        if i + 2 in noun_chunks_dict:
+                    elif doc[i].pos_ in {"PART"}:
+                        if i + 1 in noun_chunks_dict:
                             verb_phrase += " " + " ".join(
-                                [doc[i + 1].text, noun_chunks_dict[i + 2].text]
+                                [doc[i].text, noun_chunks_dict[i + 1].text]
                             )
-                            i += 1 + len(noun_chunks_dict[i + 2])
+                            i += 1 + len(noun_chunks_dict[i + 1])
                             connect_count += 1
 
-                        elif i + 2 < len(doc) and doc[i + 2].pos_ == "VERB":
+                        elif i + 1 < len(doc) and doc[i + 1].pos_ in {"VERB", "NOUN"}:
                             verb_phrase += " " + " ".join(
-                                [doc[i + 1].text, doc[i + 2].text]
+                                [doc[i].text, doc[i + 1].text]
                             )
                             i += 2
                             connect_count += 1
 
                         else:
-                            i += 1
-                    elif doc[i + 1].pos_ in {"ADJ", "VERB"}:
-                        verb_phrase += " " + doc[i + 1].text
+                            break
+                    elif doc[i].pos_ in {"PUNCT"}:
+                        if i + 1 in noun_chunks_dict:
+                            verb_phrase += "" + "".join(
+                                [doc[i].text, noun_chunks_dict[i + 1].text]
+                            )
+                            i += 1 + len(noun_chunks_dict[i + 1])
+                            connect_count += 1
+                        elif i + 1 < len(doc) and doc[i + 1].pos_ in {"NOUN","NUM"}:
+                            verb_phrase += "" + "".join([doc[i].text, doc[i + 1].text])
+                            i += 2
+                            connect_count += 1
+
+                        else:
+                            break
+                    elif doc[i].pos_ in {"ADJ", "ADV"}:
+                        verb_phrase += " " + doc[i].text
+                        i += 1
+                        connect_count += 1
+                    elif doc[i].pos_ in {"NOUN", "NUM"}:
+                        verb_phrase += " " + doc[i].text
                         i += 1
                         connect_count += 1
                     else:
                         break
-                    if (
-                        not is_unigram(verb_phrase)
-                        or is_passive_verb(token)
-                        or token.pos_ == "ADJ"
-                    ):
-                        merged_list.append(verb_phrase)
-
-        i += 1
+                if not is_unigram(verb_phrase):
+                    merged_list.append(verb_phrase)
+        else:
+            i += 1
 
     output = [i for i in merged_list]
     print(output)
@@ -142,7 +197,7 @@ def extract_and_merge(text: str):
 
 
 if __name__ == "__main__":
-    env = os.getenv("FLASK_ENV", "production")
+    env = os.getenv("FLASK_ENV", "development")
     print("Running with env of ", env)
     ssl_context = (
         ("./localhost.pem", "./localhost-key.pem") if env == "development" else None
