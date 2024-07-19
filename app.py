@@ -227,7 +227,7 @@ def extract_and_merge(text: str):
                             )
                             i += 1 + len(noun_chunks_dict[i + 1])
                             connect_count += 1
-                        elif doc[i + 1].pos_ in {"NOUN", "NUM"}:
+                        elif i + 1 < len(doc) and doc[i + 1].pos_ in {"NOUN", "NUM"}:
                             chunk_text += (
                                 doc[i].text
                                 + doc[i].whitespace_
@@ -239,7 +239,12 @@ def extract_and_merge(text: str):
                         else:
                             break
                     elif doc[i].pos_ in {"SYM", "PUNCT"}:
-                        if doc[i + 1].pos_ in {"NOUN", "NUM", "ADJ", "ADV"}:
+                        if i + 1 < len(doc) and doc[i + 1].pos_ in {
+                            "NOUN",
+                            "NUM",
+                            "ADJ",
+                            "ADV",
+                        }:
                             chunk_text += (
                                 doc[i].text
                                 + doc[i].whitespace_
@@ -281,7 +286,7 @@ def extract_and_merge(text: str):
                     i += len(noun_chunks_dict[i])
                     connect_count += 1
                 elif doc[i].pos_ in {"PART"}:
-                    if i + 1 in noun_chunks_dict:
+                    if i + 1 < len(doc) and i + 1 in noun_chunks_dict:
                         verb_phrase += (
                             doc[i].text
                             + doc[i].whitespace_
@@ -310,7 +315,11 @@ def extract_and_merge(text: str):
                         )
                         i += 1 + len(noun_chunks_dict[i + 1])
                         connect_count += 1
-                    elif i + 1 < len(doc) and doc[i + 1].pos_ in {"NOUN", "NUM"}:
+                    elif (
+                        i + 1 < len(doc)
+                        and i + 1 < len(doc)
+                        and doc[i + 1].pos_ in {"NOUN", "NUM"}
+                    ):
                         verb_phrase += (
                             doc[i].text
                             + doc[i].whitespace_
