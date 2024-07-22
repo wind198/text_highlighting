@@ -377,4 +377,8 @@ if __name__ == "__main__":
     ssl_context = (
         ("./localhost.pem", "./localhost-key.pem") if env == "development" else None
     )
-    app.run(debug=True, port=5000, ssl_context=ssl_context)
+    app.run(
+        debug=True if env == "development" else False,
+        port=5000,
+        ssl_context=ssl_context,
+    )
