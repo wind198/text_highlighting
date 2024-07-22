@@ -4,8 +4,11 @@ import spacy
 from rake_nltk import Rake
 from nltk.corpus import stopwords
 from langdetect import detect
+import nltk
 
 nlp = spacy.load("en_core_web_sm")
+
+nltk.download("stopwords")
 
 
 def is_overlapping(new_position, positions):
