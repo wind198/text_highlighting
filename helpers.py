@@ -146,12 +146,25 @@ def is_connected(
             "ADP",
             "PART",
             "CCONJ",
-            "DET",
         }
         or token.text in {"-"}
         for token in token_in_betweens
     ):
         return True
+
+    even_pos_token = [
+        t for (index, t) in enumerate(token_in_betweens) if index % 2 == 0
+    ]
+    if all(
+        token.pos_
+        in {
+            "CCONJ",
+        }
+        or token.text in {"-"}
+        for token in even_pos_token
+    ):
+        return True
+
     return False
 
 

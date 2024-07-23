@@ -35,10 +35,7 @@ def extract_keywords(text: str, min_length: int, max_length: int):
 
     stop_words = stopwords.words("english")
     stop_words.append("-")
-    rake = Rake(
-        min_length=min_length,
-        max_length=max_length,
-    )
+    rake = Rake(min_length=min_length, max_length=max_length, stopwords=[])
 
     rake.extract_keywords_from_text(text)
     keywords = rake.get_ranked_phrases()

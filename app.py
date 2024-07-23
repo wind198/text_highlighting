@@ -24,8 +24,9 @@ def hello():
 def highlight():
     data = request.json
     text = data.get("text", "")
-    min_len = request.args.get("min_len", 1)
-    max_len = request.args.get("max_len", 6)
+    min_len = int(request.args.get("min_len", 1))
+    max_len = int(request.args.get("max_len", 6))
+    print(max_len)
 
     # Replace with your actual text processing logic
     highlighted_words = process_text(text, min_len, max_len)
